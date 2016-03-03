@@ -25,6 +25,17 @@ var yargs = require('yargs');
 var os = require('os');
 
 var concurrency = os.cpus().length;
+console.log(concurrency);
+console.log(concurrency);
+console.log(concurrency);
+console.log(concurrency);
+console.log(concurrency);
+console.log(concurrency);
+console.log(concurrency);
+console.log(concurrency);
+console.log(concurrency);
+console.log(concurrency);
+concurrency = 4;
 
 var packageJson = require('./package.json');
 var version = packageJson.version;
