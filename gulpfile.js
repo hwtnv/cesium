@@ -22,6 +22,9 @@ var Promise = require('bluebird');
 var requirejs = require('requirejs');
 var karma = require('karma').Server;
 var yargs = require('yargs');
+var os = require('os');
+
+var concurrency = os.cpus().length;
 
 var packageJson = require('./package.json');
 var version = packageJson.version;
@@ -107,6 +110,13 @@ gulp.task('buildApps', ['combine', 'minifyRelease'], function() {
 
 gulp.task('clean', function(done) {
     async.forEach(filesToClean, rimraf, done);
+});
+
+gulp.task('requirejs', function(done) {
+    var config = JSON.parse(new Buffer(process.argv[3].substring(2), 'base64').toString('utf8'));
+    requirejs.optimize(config, function() {
+        done();
+    }, done);
 });
 
 gulp.task('cloc', ['build'], function() {
@@ -495,7 +505,7 @@ gulp.task('sortRequires', function(done) {
 });
 
 function combineCesium(debug, optimizer, combineOutput) {
-    return requirejsOptimize({
+    return requirejsOptimize('Cesium.js', {
         wrap : true,
         useStrict : true,
         optimize : optimizer,
@@ -516,8 +526,8 @@ function combineWorkers(debug, optimizer, combineOutput) {
         globby(['Source/Workers/cesiumWorkerBootstrapper.js',
                 'Source/Workers/transferTypedArrayTest.js',
                 'Source/ThirdParty/Workers/*.js']).then(function(files) {
-            return Promise.all(files.map(function(file) {
-                return requirejsOptimize({
+            return Promise.map(files, function(file) {
+                return requirejsOptimize(file, {
                     wrap : false,
                     useStrict : true,
                     optimize : optimizer,
@@ -530,15 +540,15 @@ function combineWorkers(debug, optimizer, combineOutput) {
                     include : filePathToModuleId(path.relative('Source', file)),
                     out : path.join(combineOutput, path.relative('Source', file))
                 });
-            }));
+            }, {concurrency : concurrency});
         }),
         globby(['Source/Workers/*.js',
                 '!Source/Workers/cesiumWorkerBootstrapper.js',
                 '!Source/Workers/transferTypedArrayTest.js',
                 '!Source/Workers/createTaskProcessorWorker.js',
                 '!Source/ThirdParty/Workers/*.js']).then(function(files) {
-            return Promise.all(files.map(function(file) {
-                return requirejsOptimize({
+            return Promise.map(files, function(file) {
+                return requirejsOptimize(file, {
                     wrap : true,
                     useStrict : true,
                     optimize : optimizer,
@@ -550,15 +560,15 @@ function combineWorkers(debug, optimizer, combineOutput) {
                     include : filePathToModuleId(path.relative('Source', file)),
                     out : path.join(combineOutput, path.relative('Source', file))
                 });
-            }));
+            }, {concurrency : concurrency});
         })
     );
 }
 
 function minifyCSS(outputDirectory) {
     return globby('Source/**/*.css').then(function(files) {
-        return Promise.all(files.map(function(file) {
-            return requirejsOptimize({
+        return Promise.map(files, function(file) {
+            return requirejsOptimize(file, {
                 wrap : true,
                 useStrict : true,
                 optimizeCss : 'standard',
@@ -568,7 +578,7 @@ function minifyCSS(outputDirectory) {
                 cssIn : file,
                 out : path.join(outputDirectory, path.relative('Source', file))
             });
-        }));
+        }, {concurrency : concurrency});
     });
 }
 
@@ -830,7 +840,7 @@ function buildCesiumViewer() {
     mkdirp.sync(cesiumViewerOutputDirectory);
 
     var promise = Promise.join(
-        requirejsOptimize({
+        requirejsOptimize('CesiumViewer', {
             wrap : true,
             useStrict : true,
             optimizeCss : 'standard',
@@ -842,7 +852,7 @@ function buildCesiumViewer() {
             name : 'CesiumViewerStartup',
             out : cesiumViewerStartup
         }),
-        requirejsOptimize({
+        requirejsOptimize('CesiumViewer CSS', {
             wrap : true,
             useStrict : true,
             optimizeCss : 'standard',
@@ -908,10 +918,19 @@ function removeExtension(p) {
     return p.slice(0, -path.extname(p).length);
 }
 
-function requirejsOptimize(config) {
-    config.logLevel = 1;
+function requirejsOptimize(name, config) {
+    console.log('Building ' + name);
     return new Promise(function(resolve, reject) {
-        requirejs.optimize(config, resolve, reject);
+        var cmd = 'npm run requirejs -- --' + new Buffer(JSON.stringify(config)).toString('base64') + ' --silent';
+        child_process.exec(cmd, function(e) {
+            if (e) {
+                console.log('Error ' + name);
+                reject(e);
+                return;
+            }
+            console.log('Finished ' + name);
+            resolve();
+        });
     });
 }
 
