@@ -24,18 +24,7 @@ var karma = require('karma').Server;
 var yargs = require('yargs');
 var os = require('os');
 
-var concurrency = os.cpus().length;
-console.log(concurrency);
-console.log(concurrency);
-console.log(concurrency);
-console.log(concurrency);
-console.log(concurrency);
-console.log(concurrency);
-console.log(concurrency);
-console.log(concurrency);
-console.log(concurrency);
-console.log(concurrency);
-concurrency = 4;
+var concurrency = Math.min(os.cpus().length, 8);
 
 var packageJson = require('./package.json');
 var version = packageJson.version;
@@ -533,10 +522,11 @@ function combineCesium(debug, optimizer, combineOutput) {
 }
 
 function combineWorkers(debug, optimizer, combineOutput) {
-    return Promise.join(
-        globby(['Source/Workers/cesiumWorkerBootstrapper.js',
-                'Source/Workers/transferTypedArrayTest.js',
-                'Source/ThirdParty/Workers/*.js']).then(function(files) {
+    //This is done waterfall style for concurrency reasons.
+    return globby(['Source/Workers/cesiumWorkerBootstrapper.js',
+                   'Source/Workers/transferTypedArrayTest.js',
+                   'Source/ThirdParty/Workers/*.js'])
+        .then(function(files) {
             return Promise.map(files, function(file) {
                 return requirejsOptimize(file, {
                     wrap : false,
@@ -552,12 +542,15 @@ function combineWorkers(debug, optimizer, combineOutput) {
                     out : path.join(combineOutput, path.relative('Source', file))
                 });
             }, {concurrency : concurrency});
-        }),
-        globby(['Source/Workers/*.js',
-                '!Source/Workers/cesiumWorkerBootstrapper.js',
-                '!Source/Workers/transferTypedArrayTest.js',
-                '!Source/Workers/createTaskProcessorWorker.js',
-                '!Source/ThirdParty/Workers/*.js']).then(function(files) {
+        })
+        .then(function() {
+            return globby(['Source/Workers/*.js',
+                           '!Source/Workers/cesiumWorkerBootstrapper.js',
+                           '!Source/Workers/transferTypedArrayTest.js',
+                           '!Source/Workers/createTaskProcessorWorker.js',
+                           '!Source/ThirdParty/Workers/*.js']);
+        })
+        .then(function(files) {
             return Promise.map(files, function(file) {
                 return requirejsOptimize(file, {
                     wrap : true,
@@ -572,8 +565,7 @@ function combineWorkers(debug, optimizer, combineOutput) {
                     out : path.join(combineOutput, path.relative('Source', file))
                 });
             }, {concurrency : concurrency});
-        })
-    );
+        });
 }
 
 function minifyCSS(outputDirectory) {
