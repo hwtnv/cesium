@@ -24,7 +24,8 @@ var karma = require('karma').Server;
 var yargs = require('yargs');
 var os = require('os');
 
-var concurrency = Math.min(os.cpus().length, 8);
+//Since combine and minify run in parallel already, split concurrency in half.
+var concurrency = Math.min(os.cpus().length, 8) / 2;
 
 var packageJson = require('./package.json');
 var version = packageJson.version;
